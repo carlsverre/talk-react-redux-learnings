@@ -1,9 +1,12 @@
 import React, { Component } from 'react';
-import { BrowserRouter as Router, Route, Link } from 'react-router-dom';
+import { Router, Route, Link } from 'react-router-dom';
+import createBrowserHistory from 'history/createBrowserHistory'
 import { Provider, connect } from 'react-redux';
-import { withRouter } from 'react-router-dom';
-import { createStore } from 'redux';
+import { withRouter, Redirect, Switch } from 'react-router-dom';
+import { createStore, compose } from 'redux';
 import _ from "lodash";
+
+import lifecycle from './lifecycle';
 
 // import { batchedSubscribe } from "redux-batched-subscribe";
 // import { unstable_batchedUpdates } from "react-dom";
@@ -19,6 +22,8 @@ const PAGES = {
     "page-b": { title: "Sassy", img: URL_IMG2 },
     "page-c": { title: "Bro, do you even lift?", img: URL_IMG3 },
 };
+
+
 
 
 
@@ -47,13 +52,16 @@ const Store = createStore(
 
 
 
+
+
+
 class Page extends Component {
     /*static contextTypes = {
         page: React.PropTypes.object
     }*/
 
     render() {
-        console.log("CHILD", this.props.page);
+        console.log("CHILD", this.props.page && this.props.page.title);
 
         const { title, img } = this.props.page;
         return (
@@ -75,14 +83,15 @@ Page = connect(page => ({ page }))(Page);
 
 
 
+
+
+
 class PageController extends Component {
 
     //static childContextTypes = { page: React.PropTypes.object }
     //getChildContext() { return { page: this.props.page }; }
 
     componentWillMount() {
-        this.props.history.listen(() => console.log("---------- page changed ----------"));
-
         this.updatePage(this.props);
     }
 
@@ -97,7 +106,7 @@ class PageController extends Component {
     }
 
     render() {
-        console.log("PARENT", this.props.page);
+        console.log("PARENT", this.props.page && this.props.page.title);
 
         if (this.props.page) {
             return <Page />;
@@ -110,32 +119,98 @@ class PageController extends Component {
 // Component composition
 // withRouter provides { match }
 // connect provides { dispatch, page }
-PageController = withRouter(
-    connect(page => ({ page }))(
-        PageController));
+PageController = compose(
+    withRouter,
+    connect(page => ({ page }))
+)(PageController);
 
 
 
 
 
 
+
+
+
+
+class AlternativePageController extends Component {
+    render() {
+        console.log("PARENT", this.props.page && this.props.page.title);
+
+        if (this.props.page) {
+            return <Page />;
+        } else {
+            return <h1>Please select a page</h1>;
+        }
+    }
+}
+
+// Component composition
+// withRouter provides { match, history }
+// lifecycle performs transition dispatches
+// connect provides { dispatch, page }
+AlternativePageController = compose(
+    withRouter,
+    lifecycle({
+        onMount(dispatch, props) {
+            dispatch(setPage(props.match.params.page));
+        },
+
+        onUpdate(dispatch, props, nextProps) {
+            if (props.match.params.page !== nextProps.match.params.page) {
+                dispatch(setPage(nextProps.match.params.page));
+            }
+        }
+    }),
+    connect(page => ({ page }))
+)(AlternativePageController);
+
+
+
+
+
+
+
+
+
+const history = createBrowserHistory();
+history.listen(() => console.log("---------- page changed ----------"));
 
 export default class Example extends Component {
+    renderNav(prefix) {
+        return (
+            <ul className="nav">
+                <li><Link to={prefix}>Index</Link></li>
+                {_.map(PAGES, (page, name) =>
+                    <li key={name}>
+                        <Link to={`${prefix}/${name}`}>{page.title}</Link>
+                    </li>
+                )}
+            </ul>
+        );
+    }
+
     render() {
         return (
             <Provider store={Store}>
-                <Router>
-                    <div className="Example">
-                        <ul className="nav">
-                            <li><Link to="/">Index</Link></li>
-                            {_.map(PAGES, (page, name) =>
-                                <li key={name}>
-                                    <Link to={`/${name}`}>{page.title}</Link>
-                                </li>
-                            )}
-                        </ul>
-                        <Route path="/:page?" component={PageController} />
-                    </div>
+                <Router history={history}>
+                    <Switch>
+                        <Route path="/" exact>
+                            <Redirect to="/basic" />
+                        </Route>
+                        <Route path="/basic">
+                            <div className="Example">
+                                {this.renderNav("/basic")}
+                                <Route path="/basic/:page?" component={PageController} />
+                            </div>
+                        </Route>
+                        <Route path="/alt">
+                            <div className="Example">
+                                {this.renderNav("/alt")}
+                                <Route path="/alt/:page?" component={AlternativePageController} />
+                            </div>
+                        </Route>
+                    </Switch>
                 </Router>
             </Provider>
         );
